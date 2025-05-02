@@ -1,41 +1,12 @@
 import { Analytics } from "@vercel/analytics/next";
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import localFont from "next/font/local";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { PostHogProvider } from "./components/PosthogProvider";
 
-const inter = Inter({
+const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-jetbrains-mono",
 });
-
-const ppNeue = localFont({
-  src: "../fonts/PPNeueMontreal-Medium.otf",
-  variable: "--font-pp-neue",
-});
-
-const ppSupply = localFont({
-  src: "../fonts/PPSupplySans-Regular.otf",
-  variable: "--font-pp-supply",
-});
-
-export const metadata: Metadata = {
-  title: "Open Operator",
-  description: "Watch AI browse the web, for free",
-  openGraph: {
-    images: ["/og.png"],
-    title: "Open Operator",
-    description: "Watch AI browse the web, for free",
-    url: "https://operator.browserbase.com",
-  },
-  icons: {
-    icon: [
-      { url: "/favicon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico" },
-    ],
-  },
-};
 
 export default function RootLayout({
   children,
@@ -50,9 +21,9 @@ export default function RootLayout({
         <link rel="alternate icon" href="/favicon.ico" />
       </head>
       <body
-        className={`${inter.variable} ${ppNeue.variable} ${ppSupply.variable} font-sans antialiased bg-white text-gray-900`}
+        className={`${jetbrainsMono.variable} font-mono antialiased bg-white text-gray-900`}
       >
-        <PostHogProvider>{children}</PostHogProvider>
+        {children}
         <Analytics />
       </body>
     </html>

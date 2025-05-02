@@ -1,221 +1,182 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { AnimatePresence } from "framer-motion";
-import ChatFeed from "./components/ChatFeed";
-import AnimatedButton from "./components/AnimatedButton";
-import Image from "next/image";
-import posthog from "posthog-js";
-
-const Tooltip = ({ children, text }: { children: React.ReactNode; text: string }) => {
-  return (
-    <div className="relative group">
-      {children}
-      <span className="absolute hidden group-hover:block w-auto px-3 py-2 min-w-max left-1/2 -translate-x-1/2 translate-y-3 bg-gray-900 text-white text-xs rounded-md font-ppsupply">
-        {text}
-      </span>
-    </div>
-  );
-};
+import { useState } from "react";
+import { websites } from "./data/websites";
+import InitialView from "./components/InitialView";
+import SessionView from "./components/SessionView";
 
 export default function Home() {
-  const [isChatVisible, setIsChatVisible] = useState(false);
-  const [initialMessage, setInitialMessage] = useState("");
+  const [session, setSession] = useState<{
+    id: string | null;
+    debugUrl: string | null;
+    pageContent: string | null;
+    isTerminated: boolean;
+    screenshot: string | null;
+  }>({
+    id: null,
+    debugUrl: null,
+    pageContent: null,
+    isTerminated: false,
+    screenshot: null,
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isSessionVisible, setIsSessionVisible] = useState(false);
+  const [pendingSession, setPendingSession] = useState<{
+    id: string;
+    debugUrl: string;
+    pageContent: string;
+  } | null>(null);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Handle CMD+Enter to submit the form when chat is not visible
-      if (!isChatVisible && (e.metaKey || e.ctrlKey) && e.key === "Enter") {
-        e.preventDefault();
-        const form = document.querySelector("form") as HTMLFormElement;
-        if (form) {
-          form.requestSubmit();
-        }
+  const handleSubmit = async (url: string) => {
+    setIsLoading(true);
+
+    try {
+      // If the input doesn't start with http:// or https://, add https://
+      const processedUrl = url.startsWith("http://") || url.startsWith("https://")
+        ? url
+        : `https://${url}`;
+
+      // First, create a new session
+      const sessionResponse = await fetch("/api/session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
+      });
+
+      if (!sessionResponse.ok) {
+        throw new Error("Failed to create session");
       }
 
-      // Handle CMD+K to focus input when chat is not visible
-      if (!isChatVisible && (e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        const input = document.querySelector(
-          'input[name="message"]'
-        ) as HTMLInputElement;
-        if (input) {
-          input.focus();
-        }
+      const { sessionId: newSessionId, sessionUrl } = await sessionResponse.json();
+
+      // Then navigate to the URL
+      const navigateResponse = await fetch("/api/navigate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: newSessionId,
+          url: processedUrl,
+        }),
+      });
+
+      if (!navigateResponse.ok) {
+        throw new Error("Failed to navigate to URL");
       }
 
-      // Handle ESC to close chat when visible
-      if (isChatVisible && e.key === "Escape") {
-        e.preventDefault();
-        setIsChatVisible(false);
+      const { debugUrl, pageContent } = await navigateResponse.json();
+      
+      // Store the pending session data
+      setPendingSession({
+        id: newSessionId,
+        debugUrl,
+        pageContent,
+      });
+      
+      // Start the transition effect
+      setIsTransitioning(true);
+    } catch (error) {
+      alert("Failed to load the website. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTransitionComplete = () => {
+    if (pendingSession) {
+      setSession({
+        id: pendingSession.id,
+        debugUrl: pendingSession.debugUrl,
+        pageContent: pendingSession.pageContent,
+        isTerminated: false,
+        screenshot: null,
+      });
+      setPendingSession(null);
+      setIsSessionVisible(true);
+    }
+    setIsTransitioning(false);
+  };
+
+  const handleTerminateSession = async () => {
+    if (!session.id) return;
+
+    try {
+      const response = await fetch("/api/navigate", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ sessionId: session.id }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to terminate session");
       }
-    };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isChatVisible]);
+      const { screenshot } = await response.json();
 
-  const startChat = useCallback(
-    (finalMessage: string) => {
-      setInitialMessage(finalMessage);
-      setIsChatVisible(true);
+      // Start the reverse transition
+      setIsTransitioning(true);
+      
+      // Wait for the session view to fade out
+      setTimeout(() => {
+        setSession(prev => ({
+          ...prev,
+          id: null,
+          debugUrl: null,
+          pageContent: null,
+          isTerminated: true,
+          screenshot,
+        }));
+        setIsSessionVisible(false);
+        setIsTransitioning(false);
+      }, 500); // Match the animation duration
+    } catch (error) {
+      alert("Failed to terminate the session. Please try again.");
+    }
+  };
 
-      try {
-        posthog.capture("submit_message", {
-          message: finalMessage,
-        });
-      } catch (e) {
-        console.error(e);
-      }
-    },
-    [setInitialMessage, setIsChatVisible]
-  );
+  const handleRefresh = () => {
+    // Start the reverse transition
+    setIsTransitioning(true);
+    
+    // Wait for the session view to fade out
+    setTimeout(() => {
+      setSession({
+        id: null,
+        debugUrl: null,
+        pageContent: null,
+        isTerminated: false,
+        screenshot: null,
+      });
+      setIsSessionVisible(false);
+      setIsTransitioning(false);
+    }, 500); // Match the animation duration
+  };
 
   return (
-    <AnimatePresence mode="wait">
-      {!isChatVisible ? (
-        <div className="min-h-screen bg-gray-50 flex flex-col">
-          {/* Top Navigation */}
-          <nav className="flex justify-between items-center px-8 py-4 bg-white border-b border-gray-200">
-            <div className="flex items-center gap-3">
-              <Image
-                src="/favicon.svg"
-                alt="Open Operator"
-                className="w-8 h-8"
-                width={32}
-                height={32}
-              />
-              <span className="font-ppsupply text-gray-900">Open Operator</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <a
-                href="https://github.com/browserbase/open-operator"
-                target="_blank" 
-                rel="noopener noreferrer"
-              >
-                <button className="h-fit flex items-center justify-center px-4 py-2 rounded-md bg-[#1b2128] hover:bg-[#1d232b] gap-1 text-sm font-medium text-white border border-pillSecondary transition-colors duration-200">
-                  <Image
-                    src="/github.svg"
-                    alt="GitHub"
-                    width={20}
-                    height={20}
-                    className="mr-2"
-                  />
-                  View GitHub
-                </button>
-              </a>
-            </div>
-          </nav>
-
-          {/* Main Content */}
-          <main className="flex-1 flex flex-col items-center justify-center p-6">
-            <div className="w-full max-w-[640px] bg-white border border-gray-200 shadow-sm">
-              <div className="w-full h-12 bg-white border-b border-gray-200 flex items-center px-4">
-                <div className="flex items-center gap-2">
-                  <Tooltip text="why would you want to close this?">
-                    <div className="w-3 h-3 rounded-full bg-red-500" />
-                  </Tooltip>
-                  <Tooltip text="s/o to the 🅱️rowserbase devs">
-                    <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                  </Tooltip>
-                  <Tooltip text="@pk_iv was here">
-                    <div className="w-3 h-3 rounded-full bg-green-500" />
-                  </Tooltip>
-                </div>
-              </div>
-
-              <div className="p-8 flex flex-col items-center gap-8">
-                <div className="flex flex-col items-center gap-3">
-                  <h1 className="text-2xl font-ppneue text-gray-900 text-center">
-                    Open Operator
-                  </h1>
-                  <p className="text-base font-ppsupply text-gray-500 text-center">
-                    Hit run to watch AI browse the web.
-                  </p>
-                </div>
-
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const formData = new FormData(e.currentTarget);
-                    const input = e.currentTarget.querySelector(
-                      'input[name="message"]'
-                    ) as HTMLInputElement;
-                    const message = (formData.get("message") as string).trim();
-                    const finalMessage = message || input.placeholder;
-                    startChat(finalMessage);
-                  }}
-                  className="w-full max-w-[720px] flex flex-col items-center gap-3"
-                >
-                  <div className="relative w-full">
-                    <input
-                      name="message"
-                      type="text"
-                      placeholder="What's the price of NVIDIA stock?"
-                      className="w-full px-4 py-3 pr-[100px] border border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FF3B00] focus:border-transparent font-ppsupply"
-                    />
-                    <AnimatedButton type="submit">Run</AnimatedButton>
-                  </div>
-                </form>
-                <div className="grid grid-cols-2 gap-3 w-full">
-                  <button
-                    onClick={() =>
-                      startChat(
-                        "Who is the top GitHub contributor to Stagehand by Browserbase?"
-                      )
-                    }
-                    className="p-3 text-sm text-gray-600 border border-gray-200 hover:border-[#FF3B00] hover:text-[#FF3B00] transition-colors font-ppsupply text-left"
-                  >
-                    Who is the top contributor to Stagehand?
-                  </button>
-                  <button
-                    onClick={() =>
-                      startChat("How many wins do the 49ers have?")
-                    }
-                    className="p-3 text-sm text-gray-600 border border-gray-200 hover:border-[#FF3B00] hover:text-[#FF3B00] transition-colors font-ppsupply text-left"
-                  >
-                    How many wins do the 49ers have?
-                  </button>
-                  <button
-                    onClick={() => startChat("What is Stephen Curry's PPG?")}
-                    className="p-3 text-sm text-gray-600 border border-gray-200 hover:border-[#FF3B00] hover:text-[#FF3B00] transition-colors font-ppsupply text-left"
-                  >
-                    What is Stephen Curry&apos;s PPG?
-                  </button>
-                  <button
-                    onClick={() => startChat("How much is NVIDIA stock?")}
-                    className="p-3 text-sm text-gray-600 border border-gray-200 hover:border-[#FF3B00] hover:text-[#FF3B00] transition-colors font-ppsupply text-left"
-                  >
-                    How much is NVIDIA stock?
-                  </button>
-                </div>
-              </div>
-            </div>
-            <p className="text-base font-ppsupply text-center mt-8">
-              Powered by{" "}
-              <a
-                href="https://stagehand.dev"
-                className="text-yellow-600 hover:underline"
-              >
-                🤘 Stagehand
-              </a>{" "}
-              on{" "}
-              <a
-                href="https://browserbase.com"
-                className="text-[#FF3B00] hover:underline"
-              >
-                🅱️ Browserbase
-              </a>
-              .
-            </p>
-          </main>
-        </div>
-      ) : (
-        <ChatFeed
-          initialMessage={initialMessage}
-          onClose={() => setIsChatVisible(false)}
-        />
-      )}
-    </AnimatePresence>
+    <div className="min-h-screen bg-[#1A1A1A] flex flex-col items-center justify-center p-6 relative">
+      <InitialView 
+        onSubmit={handleSubmit} 
+        isLoading={isLoading} 
+        isTransitioning={isTransitioning}
+        onTransitionComplete={handleTransitionComplete}
+      />
+      <SessionView
+        debugUrl={session.debugUrl}
+        isSessionTerminated={session.isTerminated}
+        onTerminate={handleTerminateSession}
+        onRefresh={handleRefresh}
+        screenshot={session.screenshot}
+        pageContent={session.pageContent}
+        isVisible={isSessionVisible}
+      />
+    </div>
   );
 }
