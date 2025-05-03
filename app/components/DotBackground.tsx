@@ -160,20 +160,18 @@ export default function DotBackground({ isTransitioning, isRippling, onTransitio
             Math.pow(dot.y - transitionCenterRef.current.y, 2)
           );
           
-          // Create an expanding/contracting ripple effect
-          const rippleSpeed = 800; // pixels per second
-          const maxDistance = Math.max(
-            Math.abs(dot.x - transitionCenterRef.current.x),
-            Math.abs(dot.y - transitionCenterRef.current.y)
-          ) * 1.5; // Extend slightly beyond the edges
+          // Create successive circular waves
+          const waveSpeed = 500; // pixels per second
+          const waveWidth = 200; // width of each wave
+          const waveInterval = 0.5; // seconds between waves
           
-          // Calculate the ripple position as it expands and contracts
-          const ripplePosition = (elapsed * rippleSpeed) % (maxDistance * 2);
-          const distanceToRipple = Math.abs(ripplePosition - distanceFromCenter);
+          // Calculate which wave this dot is in
+          const waveNumber = Math.floor(elapsed / waveInterval);
+          const wavePosition = (elapsed * waveSpeed) - distanceFromCenter - (waveNumber * waveInterval * waveSpeed);
           
-          if (distanceToRipple < 100) { // Width of the ripple effect
-            // Calculate intensity based on distance to ripple
-            const intensity = Math.cos((distanceToRipple / 100) * Math.PI) * 0.5 + 0.5;
+          if (wavePosition > -waveWidth && wavePosition < waveWidth) {
+            // Calculate intensity based on position in the wave
+            const intensity = Math.cos((wavePosition / waveWidth) * Math.PI) * 0.5 + 0.5;
             rippleEffect = intensity * 2;
           }
         }
@@ -187,22 +185,21 @@ export default function DotBackground({ isTransitioning, isRippling, onTransitio
             Math.pow(dot.y - transitionCenterRef.current.y, 2)
           );
           
-          // Create a ripple effect that expands outward
-          const rippleSpeed = 500; // pixels per second
-          const rippleWidth = 200; // width of the ripple effect
-          const ripplePosition = (elapsed * rippleSpeed) - distanceFromCenter;
+          // Create a final big wave for transition
+          const waveSpeed = 500;
+          const waveWidth = 300; // Wider wave for transition
+          const wavePosition = (elapsed * waveSpeed) - distanceFromCenter;
           
-          if (ripplePosition > -rippleWidth && ripplePosition < rippleWidth) {
-            // Calculate intensity based on position in the ripple
-            const intensity = Math.cos((ripplePosition / rippleWidth) * Math.PI) * 0.5 + 0.5;
+          if (wavePosition > -waveWidth && wavePosition < waveWidth) {
+            const intensity = Math.cos((wavePosition / waveWidth) * Math.PI) * 0.5 + 0.5;
             transitionEffect = intensity * 2;
           }
 
-          // After the ripple passes through, start fading out
-          if (ripplePosition > rippleWidth) {
-            const fadeOutStart = rippleWidth;
-            const fadeOutEnd = rippleWidth + 300; // Additional distance for fade out
-            const fadeOutProgress = Math.min(1, (ripplePosition - fadeOutStart) / (fadeOutEnd - fadeOutStart));
+          // After the wave passes through, start fading out
+          if (wavePosition > waveWidth) {
+            const fadeOutStart = waveWidth;
+            const fadeOutEnd = waveWidth + 300;
+            const fadeOutProgress = Math.min(1, (wavePosition - fadeOutStart) / (fadeOutEnd - fadeOutStart));
             transitionEffect = 1 - fadeOutProgress;
           }
         }

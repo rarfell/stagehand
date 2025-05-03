@@ -172,6 +172,50 @@ export default function Home() {
         // Break after adding the CLOSE step to UI
         if (nextStepData.done || nextStepData.result.tool === "CLOSE") {
           console.log("Agent completed task");
+          
+          // Add summary step
+          const summaryResponse = await fetch("/api/navigate", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              sessionId: newSessionId,
+              task,
+              previousSteps: agentStateRef.current.steps,
+              action: "EXECUTE_STEP",
+              step: {
+                text: "Generating summary of actions taken",
+                reasoning: "Summarizing the task completion and results",
+                tool: "SUMMARIZE",
+                instruction: "Summarize the task completion and results",
+                stepNumber: agentStateRef.current.steps.length + 1
+              }
+            }),
+          });
+
+          if (!summaryResponse.ok) {
+            const errorData = await summaryResponse.json();
+            console.error("Summary generation failed:", errorData);
+            throw new Error("Failed to generate summary");
+          }
+
+          const summaryData = await summaryResponse.json();
+          
+          // Add summary to messages
+          const summaryMessage: Message = {
+            text: summaryData.summary,
+            role: "agent",
+            reasoning: "Final summary of task completion",
+            tool: "SUMMARIZE",
+            stepNumber: agentStateRef.current.steps.length + 1
+          };
+
+          setSession(prev => ({
+            ...prev,
+            messages: [...prev.messages, summaryMessage]
+          }));
+
           break;
         }
 
@@ -246,45 +290,22 @@ export default function Home() {
         throw new Error("Failed to terminate session");
       }
 
-      const { screenshot } = await response.json();
-
-      // Start the reverse transition
       setIsTransitioning(true);
       
-      // Wait for the session view to fade out
       setTimeout(() => {
-        setSession(prev => ({
-          ...prev,
+        setSession({
           id: null,
           debugUrl: null,
-          isTerminated: true,
-          screenshot,
+          isTerminated: false,
+          screenshot: null,
           messages: [],
-        }));
+        });
         setIsSessionVisible(false);
         setIsTransitioning(false);
       }, 500); // Match the animation duration
     } catch (error) {
       alert("Failed to terminate the session. Please try again.");
     }
-  };
-
-  const handleRefresh = () => {
-    // Start the reverse transition
-    setIsTransitioning(true);
-    
-    // Wait for the session view to fade out
-    setTimeout(() => {
-      setSession({
-        id: null,
-        debugUrl: null,
-        isTerminated: false,
-        screenshot: null,
-        messages: [],
-      });
-      setIsSessionVisible(false);
-      setIsTransitioning(false);
-    }, 500); // Match the animation duration
   };
 
   return (
@@ -297,9 +318,7 @@ export default function Home() {
       />
       <SessionView
         debugUrl={session.debugUrl}
-        isSessionTerminated={session.isTerminated}
         onTerminate={handleTerminateSession}
-        onRefresh={handleRefresh}
         screenshot={session.screenshot}
         messages={session.messages}
         isLoading={isLoading}

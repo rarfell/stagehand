@@ -45,6 +45,8 @@ export default function ChatInterface({ messages, isLoading }: ChatInterfaceProp
             <div className={`p-4 rounded-2xl max-w-[80%] space-y-2 ${
               message.role === "user" 
                 ? "bg-white" 
+                : message.tool === "SUMMARIZE"
+                ? "bg-[#3A3A3A] border-2 border-[#4A4A4A]"
                 : "bg-[#2A2A2A]"
             }`}>
               {message.role === "agent" && (
@@ -55,7 +57,11 @@ export default function ChatInterface({ messages, isLoading }: ChatInterfaceProp
                     </span>
                   )}
                   {message.tool && (
-                    <span className="px-2 py-1 bg-[#404040] rounded text-xs text-white">
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      message.tool === "SUMMARIZE"
+                        ? "bg-[#4A4A4A] text-white font-bold"
+                        : "bg-[#404040] text-white"
+                    }`}>
                       {message.tool}
                     </span>
                   )}
@@ -72,7 +78,7 @@ export default function ChatInterface({ messages, isLoading }: ChatInterfaceProp
                   )
                 )}
               </p>
-              {message.role === "agent" && message.reasoning && (
+              {message.role === "agent" && message.reasoning && message.tool !== "SUMMARIZE" && (
                 <p className="text-sm text-gray-400 whitespace-pre-wrap">
                   <span className="font-semibold">Reasoning: </span>
                   {message.reasoning.split(/(https?:\/\/[^\s]+)/g).map((part, i) => 
@@ -103,6 +109,36 @@ export default function ChatInterface({ messages, isLoading }: ChatInterfaceProp
           </motion.div>
         )}
         <div ref={messagesEndRef} />
+      </div>
+      <div className="p-4 border-t-[3px] border-[#404040]">
+        <form className="flex gap-2">
+          <input
+            type="text"
+            placeholder="Type your message..."
+            className="flex-1 bg-[#1A1A1A] text-white placeholder-gray-400 px-4 py-3 rounded-2xl border-[3px] border-[#404040] focus:outline-none focus:ring-0 focus:border-white transition-all duration-200 font-jetbrains-mono"
+          />
+          <button
+            type="submit"
+            className="rounded-2xl bg-white text-black hover:bg-gray-100 transition-colors duration-200 flex items-center justify-center px-6"
+            aria-label="Send message"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-5 h-5"
+            >
+              <path d="M22 2L11 13" />
+              <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+            </svg>
+          </button>
+        </form>
       </div>
     </div>
   );

@@ -14,7 +14,7 @@ const activeSessions = new Map<string, Stagehand>();
 export interface BrowserStep {
   text: string;
   reasoning: string;
-  tool: "GOTO" | "ACT" | "EXTRACT" | "OBSERVE" | "CLOSE" | "WAIT" | "NAVBACK";
+  tool: "GOTO" | "ACT" | "EXTRACT" | "OBSERVE" | "CLOSE" | "WAIT" | "NAVBACK" | "SUMMARIZE";
   instruction: string;
   stepNumber?: number;
 }
@@ -230,8 +230,6 @@ If the goal has been achieved, return "close".`,
                 done: false
               });
             case "CLOSE":
-              await stagehand.close();
-              activeSessions.delete(sessionId);
               return NextResponse.json({
                 success: true,
                 done: true
@@ -244,6 +242,52 @@ If the goal has been achieved, return "close".`,
             case "NAVBACK":
               await stagehand.page.goBack();
               break;
+            case "SUMMARIZE": {
+              // Get a screenshot for context
+              const cdpSession = await stagehand.page.context().newCDPSession(stagehand.page);
+              const { data } = await cdpSession.send("Page.captureScreenshot");
+
+              // Prepare the prompt for summarization
+              const message: CoreMessage = {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: `Given the following 'task': "${task}" and the previous steps taken:
+${previousSteps.map((step: BrowserStep, index: number) => `
+Step ${index + 1}:
+- Action: ${step.text}
+- Reasoning: ${step.reasoning}
+- Tool Used: ${step.tool}
+- Instruction: ${step.instruction}
+`).join("\n")}
+
+If 'task' was just a URL, ignore the list of steps and summarize what you see in the screenshot (the content of the page and possible actions).
+
+Otherwise, if 'task' is an explicit instruction, summarize the actions you took.`
+                  },
+                  {
+                    type: "image",
+                    image: data
+                  }
+                ]
+              };
+
+              // Generate the summary using the LLM
+              const result = await generateObject({
+                model: LLMClient,
+                schema: z.object({
+                  summary: z.string()
+                }),
+                messages: [message]
+              });
+
+              return NextResponse.json({
+                success: true,
+                summary: result.object.summary,
+                done: false
+              });
+            }
           }
 
           return NextResponse.json({
@@ -284,37 +328,14 @@ export async function DELETE(request: Request) {
     }
 
     const stagehand = activeSessions.get(sessionId);
-    let screenshotData = null;
 
     if (stagehand) {
-      try {
-        // Create a CDP session for faster screenshots
-        const cdpSession = await stagehand.page.context().newCDPSession(stagehand.page);
-        const { data } = await cdpSession.send("Page.captureScreenshot", {
-          format: "jpeg",
-          quality: 100,
-          captureBeyondViewport: false
-        });
-
-        // Ensure the data is a valid base64 string
-        if (data && typeof data === 'string') {
-          screenshotData = data;
-          console.log('Screenshot captured successfully, length:', data.length);
-        } else {
-          console.error('Invalid screenshot data format:', typeof data);
-        }
-      } catch (error) {
-        console.error("Error taking screenshot:", error);
-      }
-
-      // Close the Stagehand session
       await stagehand.close();
       activeSessions.delete(sessionId);
     }
 
     return NextResponse.json({ 
-      success: true,
-      screenshot: screenshotData 
+      success: true
     });
   } catch (error) {
     console.error("Error closing session:", error);

@@ -21,6 +21,11 @@ export default function InitialView({ onSubmit, isLoading, isTransitioning, onTr
     }
   }, [isTransitioning]);
 
+  useEffect(() => {
+    // Reset isRippling when component mounts or when transitioning state changes
+    setIsRippling(false);
+  }, [isTransitioning]);
+
   const handleDotTransitionComplete = () => {
     setShouldFade(true);
     onTransitionComplete?.();
