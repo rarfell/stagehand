@@ -13,6 +13,7 @@ interface InitialViewProps {
 export default function InitialView({ onSubmit, isLoading, isTransitioning, onTransitionComplete }: InitialViewProps) {
   const backgroundRef = useRef<HTMLDivElement>(null);
   const [shouldFade, setShouldFade] = useState(false);
+  const [isRippling, setIsRippling] = useState(false);
 
   useEffect(() => {
     if (isTransitioning) {
@@ -23,6 +24,11 @@ export default function InitialView({ onSubmit, isLoading, isTransitioning, onTr
   const handleDotTransitionComplete = () => {
     setShouldFade(true);
     onTransitionComplete?.();
+  };
+
+  const handleSubmit = (url: string) => {
+    setIsRippling(true);
+    onSubmit(url);
   };
 
   return (
@@ -38,12 +44,13 @@ export default function InitialView({ onSubmit, isLoading, isTransitioning, onTr
           <div ref={backgroundRef} className="absolute inset-0">
             <DotBackground 
               isTransitioning={isTransitioning}
+              isRippling={isRippling}
               onTransitionComplete={handleDotTransitionComplete}
             />
           </div>
           <div className="absolute inset-0 flex items-center justify-center">
             <UrlInput 
-              onSubmit={onSubmit} 
+              onSubmit={handleSubmit} 
               isLoading={isLoading} 
             />
           </div>

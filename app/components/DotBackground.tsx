@@ -16,10 +16,11 @@ interface Dot {
 
 interface DotBackgroundProps {
   isTransitioning?: boolean;
+  isRippling?: boolean;
   onTransitionComplete?: () => void;
 }
 
-export default function DotBackground({ isTransitioning, onTransitionComplete }: DotBackgroundProps) {
+export default function DotBackground({ isTransitioning, isRippling, onTransitionComplete }: DotBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dotsRef = useRef<Dot[]>([]);
   const mouseRef = useRef({ x: 0, y: 0 });
@@ -27,6 +28,7 @@ export default function DotBackground({ isTransitioning, onTransitionComplete }:
   const gridSize = 20; // Size of the grid (pixels between dots)
   const timeRef = useRef(0);
   const transitionStartTimeRef = useRef<number | null>(null);
+  const rippleStartTimeRef = useRef<number | null>(null);
   const transitionCenterRef = useRef({ x: 0, y: 0 });
   const [isVisible, setIsVisible] = useState(true);
   const hasTransitionedRef = useRef(false);
@@ -61,20 +63,25 @@ export default function DotBackground({ isTransitioning, onTransitionComplete }:
 
   // Handle transition state changes
   useEffect(() => {
-    if (isTransitioning) {
-      console.log("Starting transition");
-      transitionStartTimeRef.current = performance.now();
-      // Set transition center to the center of the screen
+    if (isRippling && !rippleStartTimeRef.current) {
+      rippleStartTimeRef.current = performance.now();
       if (canvasRef.current) {
         transitionCenterRef.current = {
           x: canvasRef.current.width / 2,
           y: canvasRef.current.height / 2
         };
       }
+    } else if (!isRippling) {
+      rippleStartTimeRef.current = null;
+    }
+
+    if (isTransitioning) {
+      console.log("Starting transition");
+      transitionStartTimeRef.current = performance.now();
       setIsVisible(true);
       hasTransitionedRef.current = true;
     }
-  }, [isTransitioning]);
+  }, [isTransitioning, isRippling]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -144,6 +151,33 @@ export default function DotBackground({ isTransitioning, onTransitionComplete }:
           wave = Math.sin(timeRef.current + dot.phase) * 0.25 + randomOffset;
         }
 
+        // Ripple effect
+        let rippleEffect = 0;
+        if (isRippling && rippleStartTimeRef.current) {
+          const elapsed = (performance.now() - rippleStartTimeRef.current) / 1000;
+          const distanceFromCenter = Math.sqrt(
+            Math.pow(dot.x - transitionCenterRef.current.x, 2) +
+            Math.pow(dot.y - transitionCenterRef.current.y, 2)
+          );
+          
+          // Create an expanding/contracting ripple effect
+          const rippleSpeed = 800; // pixels per second
+          const maxDistance = Math.max(
+            Math.abs(dot.x - transitionCenterRef.current.x),
+            Math.abs(dot.y - transitionCenterRef.current.y)
+          ) * 1.5; // Extend slightly beyond the edges
+          
+          // Calculate the ripple position as it expands and contracts
+          const ripplePosition = (elapsed * rippleSpeed) % (maxDistance * 2);
+          const distanceToRipple = Math.abs(ripplePosition - distanceFromCenter);
+          
+          if (distanceToRipple < 100) { // Width of the ripple effect
+            // Calculate intensity based on distance to ripple
+            const intensity = Math.cos((distanceToRipple / 100) * Math.PI) * 0.5 + 0.5;
+            rippleEffect = intensity * 2;
+          }
+        }
+
         // Transition effect
         let transitionEffect = 0;
         if (isTransitioning && transitionStartTimeRef.current) {
@@ -178,6 +212,10 @@ export default function DotBackground({ isTransitioning, onTransitionComplete }:
           // During transition, make dots white and scale up, then fade out
           dot.targetOpacity = transitionEffect;
           dot.targetScale = 1 + transitionEffect * 2;
+        } else if (isRippling) {
+          // During rippling, make dots white and scale up/down continuously
+          dot.targetOpacity = 0.5 + rippleEffect;
+          dot.targetScale = 1 + rippleEffect * 2;
         } else {
           dot.targetOpacity = 0.5 + wave;
           dot.targetScale = 1 + wave * 0.6;
@@ -226,7 +264,7 @@ export default function DotBackground({ isTransitioning, onTransitionComplete }:
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isTransitioning, initDots, onTransitionComplete]);
+  }, [isTransitioning, isRippling, initDots, onTransitionComplete]);
 
   return (
     <canvas

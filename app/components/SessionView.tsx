@@ -1,6 +1,7 @@
 import BrowserView from "./BrowserView";
 import ChatInterface from "./ChatInterface";
 import { motion, AnimatePresence } from "framer-motion";
+import { Message } from "../types/message";
 
 interface SessionViewProps {
   debugUrl: string | null;
@@ -8,7 +9,8 @@ interface SessionViewProps {
   onTerminate: () => void;
   onRefresh: () => void;
   screenshot: string | null;
-  pageContent: string | null;
+  messages: Message[];
+  isLoading: boolean;
   isVisible: boolean;
 }
 
@@ -18,8 +20,9 @@ export default function SessionView({
   onTerminate, 
   onRefresh,
   screenshot,
-  pageContent,
-  isVisible
+  messages,
+  isLoading,
+  isVisible,
 }: SessionViewProps) {
   return (
     <AnimatePresence>
@@ -43,7 +46,7 @@ export default function SessionView({
           />
           
           <div className="flex-1 h-[min(720px,45vw)]">
-            <ChatInterface pageContent={pageContent} />
+            <ChatInterface messages={messages} isLoading={isLoading} />
           </div>
         </motion.div>
       )}

@@ -1,23 +1,31 @@
 "use client";
 
-import { useState } from "react";
-import { websites } from "./data/websites";
+import { useState, useRef } from "react";
 import InitialView from "./components/InitialView";
 import SessionView from "./components/SessionView";
+import { BrowserStep } from "./api/navigate/route";
+import { Message } from "./types/message";
+
+interface AgentState {
+  sessionId: string | null;
+  sessionUrl: string | null;
+  steps: BrowserStep[];
+  isLoading: boolean;
+}
 
 export default function Home() {
   const [session, setSession] = useState<{
     id: string | null;
     debugUrl: string | null;
-    pageContent: string | null;
     isTerminated: boolean;
     screenshot: string | null;
+    messages: Message[];
   }>({
     id: null,
     debugUrl: null,
-    pageContent: null,
     isTerminated: false,
     screenshot: null,
+    messages: [],
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -25,18 +33,27 @@ export default function Home() {
   const [pendingSession, setPendingSession] = useState<{
     id: string;
     debugUrl: string;
-    pageContent: string;
   } | null>(null);
+  const [currentTask, setCurrentTask] = useState<string | undefined>(undefined);
+  const agentStateRef = useRef<AgentState>({
+    sessionId: null,
+    sessionUrl: null,
+    steps: [],
+    isLoading: false,
+  });
 
-  const handleSubmit = async (url: string) => {
+  const handleSubmit = async (task: string) => {
     setIsLoading(true);
+    setCurrentTask(task);
+
+    // Add the user's task as the first message
+    const userMessage: Message = {
+      text: task,
+      role: "user"
+    };
 
     try {
-      // If the input doesn't start with http:// or https://, add https://
-      const processedUrl = url.startsWith("http://") || url.startsWith("https://")
-        ? url
-        : `https://${url}`;
-
+      console.log("Starting new session...");
       // First, create a new session
       const sessionResponse = await fetch("/api/session", {
         method: "POST",
@@ -49,12 +66,16 @@ export default function Home() {
       });
 
       if (!sessionResponse.ok) {
+        const errorData = await sessionResponse.json();
+        console.error("Session creation failed:", errorData);
         throw new Error("Failed to create session");
       }
 
       const { sessionId: newSessionId, sessionUrl } = await sessionResponse.json();
+      console.log("Session created:", { newSessionId, sessionUrl });
 
-      // Then navigate to the URL
+      // Then start the agent with the task
+      console.log("Starting agent with task:", task);
       const navigateResponse = await fetch("/api/navigate", {
         method: "POST",
         headers: {
@@ -62,27 +83,130 @@ export default function Home() {
         },
         body: JSON.stringify({
           sessionId: newSessionId,
-          url: processedUrl,
+          task,
+          action: "START",
         }),
       });
 
       if (!navigateResponse.ok) {
-        throw new Error("Failed to navigate to URL");
+        const errorData = await navigateResponse.json();
+        console.error("Agent start failed:", errorData);
+        throw new Error("Failed to start agent");
       }
 
-      const { debugUrl, pageContent } = await navigateResponse.json();
+      const { debugUrl, result, steps } = await navigateResponse.json();
+      console.log("Agent started:", { debugUrl, result, steps });
       
       // Store the pending session data
       setPendingSession({
         id: newSessionId,
         debugUrl,
-        pageContent,
       });
+
+      // Update agent state
+      agentStateRef.current = {
+        sessionId: newSessionId,
+        sessionUrl: sessionUrl,
+        steps: steps,
+        isLoading: false,
+      };
       
       // Start the transition effect
       setIsTransitioning(true);
+
+      // Continue with subsequent steps
+      while (true) {
+        console.log("Getting next step...");
+        // Get next step from LLM
+        const nextStepResponse = await fetch("/api/navigate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sessionId: newSessionId,
+            task,
+            previousSteps: agentStateRef.current.steps,
+            action: "GET_NEXT_STEP",
+          }),
+        });
+
+        if (!nextStepResponse.ok) {
+          const errorData = await nextStepResponse.json();
+          console.error("Get next step failed:", errorData);
+          throw new Error("Failed to get next step");
+        }
+
+        const nextStepData = await nextStepResponse.json();
+        console.log("Next step received:", nextStepData);
+
+        // Add the next step to UI immediately after receiving it
+        const nextStep = {
+          ...nextStepData.result,
+          stepNumber: agentStateRef.current.steps.length + 1,
+        };
+
+        agentStateRef.current = {
+          ...agentStateRef.current,
+          steps: [...agentStateRef.current.steps, nextStep],
+        };
+
+        // Convert steps to messages
+        const messages: Message[] = [
+          userMessage,
+          ...agentStateRef.current.steps.map(step => ({
+            text: step.text,
+            role: "agent" as const,
+            reasoning: step.reasoning,
+            tool: step.tool,
+            instruction: step.instruction,
+            stepNumber: step.stepNumber,
+          }))
+        ];
+
+        setSession(prev => ({
+          ...prev,
+          messages,
+        }));
+
+        // Break after adding the CLOSE step to UI
+        if (nextStepData.done || nextStepData.result.tool === "CLOSE") {
+          console.log("Agent completed task");
+          break;
+        }
+
+        console.log("Executing step:", nextStep);
+        // Execute the step
+        const executeResponse = await fetch("/api/navigate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sessionId: newSessionId,
+            step: nextStepData.result,
+            task,
+            action: "EXECUTE_STEP",
+          }),
+        });
+
+        if (!executeResponse.ok) {
+          const errorData = await executeResponse.json();
+          console.error("Step execution failed:", errorData);
+          throw new Error("Failed to execute step");
+        }
+
+        const executeData = await executeResponse.json();
+        console.log("Step executed:", executeData);
+
+        if (executeData.done) {
+          console.log("Agent completed task");
+          break;
+        }
+      }
     } catch (error) {
-      alert("Failed to load the website. Please try again.");
+      console.error("Agent error:", error);
+      alert("Failed to start the agent. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -93,9 +217,12 @@ export default function Home() {
       setSession({
         id: pendingSession.id,
         debugUrl: pendingSession.debugUrl,
-        pageContent: pendingSession.pageContent,
         isTerminated: false,
         screenshot: null,
+        messages: [{
+          text: currentTask || "",
+          role: "user"
+        }],
       });
       setPendingSession(null);
       setIsSessionVisible(true);
@@ -130,9 +257,9 @@ export default function Home() {
           ...prev,
           id: null,
           debugUrl: null,
-          pageContent: null,
           isTerminated: true,
           screenshot,
+          messages: [],
         }));
         setIsSessionVisible(false);
         setIsTransitioning(false);
@@ -151,9 +278,9 @@ export default function Home() {
       setSession({
         id: null,
         debugUrl: null,
-        pageContent: null,
         isTerminated: false,
         screenshot: null,
+        messages: [],
       });
       setIsSessionVisible(false);
       setIsTransitioning(false);
@@ -174,7 +301,8 @@ export default function Home() {
         onTerminate={handleTerminateSession}
         onRefresh={handleRefresh}
         screenshot={session.screenshot}
-        pageContent={session.pageContent}
+        messages={session.messages}
+        isLoading={isLoading}
         isVisible={isSessionVisible}
       />
     </div>

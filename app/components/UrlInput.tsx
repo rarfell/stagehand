@@ -3,7 +3,7 @@ import { IconMicrophoneFilled, IconSquareRoundedFilled, IconLoader2, IconArrowBi
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface UrlInputProps {
-  onSubmit: (url: string) => void;
+  onSubmit: (task: string) => void;
   isLoading: boolean;
   onAudioData?: (data: { frequencyData: Uint8Array; timeDomainData: Uint8Array } | undefined) => void;
 }
@@ -171,7 +171,7 @@ export default function UrlInput({ onSubmit, isLoading, onAudioData }: UrlInputP
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Enter a URL to browse..."
+          placeholder="Enter a task for the agent to perform..."
           className="w-full bg-[#1A1A1A] text-white placeholder-gray-400 px-4 py-3 rounded-2xl border-[3px] border-[#404040] focus:outline-none focus:ring-0 focus:border-white transition-all duration-200 font-jetbrains-mono pr-28"
         />
         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -245,7 +245,7 @@ export default function UrlInput({ onSubmit, isLoading, onAudioData }: UrlInputP
           <button
             type="submit"
             className="rounded-lg bg-white text-black hover:bg-gray-100 transition-colors duration-200 flex items-center justify-center"
-            aria-label="Browse"
+            aria-label="Start Task"
             disabled={isLoading}
             style={{ width: 30, height: 30 }}
           >
