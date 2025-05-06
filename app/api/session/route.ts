@@ -102,9 +102,17 @@ async function createSession(timezone?: string, contextId?: string) {
     projectId: process.env.BROWSERBASE_PROJECT_ID!,
     browserSettings: {
       ...browserSettings,
+      fingerprint: {
+        screen: {
+          maxWidth: 1920,
+          maxHeight: 1080,
+          minWidth: 1024,
+          minHeight: 768,
+        }
+      },
       viewport: {
-        width: 1280,
-        height: 720,
+        width: 1920,
+        height: 1080,
       }
     },
     keepAlive: false,

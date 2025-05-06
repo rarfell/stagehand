@@ -17,7 +17,11 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-jetbrains-mono), monospace;
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.font-steps-mono {
+  font-family: var(--font-steps-mono), monospace;
 }
 
 /* Fix input outline */

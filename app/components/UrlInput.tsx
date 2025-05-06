@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect } from "react";
-import { IconMicrophoneFilled, IconSquareRoundedFilled, IconLoader2, IconArrowBigRightFilled } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import RetroButton from './RetroButton';
+import RetroInput from './RetroInput';
+import { MicrophoneIcon, ArrowIcon } from './RetroIcons';
 
 interface UrlInputProps {
   onSubmit: (task: string) => void;
   isLoading: boolean;
   onAudioData?: (data: { frequencyData: Uint8Array; timeDomainData: Uint8Array } | undefined) => void;
+  onError?: (error: string) => void;
 }
 
 interface AudioState {
@@ -15,7 +18,18 @@ interface AudioState {
   duration: number;
 }
 
-export default function UrlInput({ onSubmit, isLoading, onAudioData }: UrlInputProps) {
+const Tooltip = ({ children }: { children: React.ReactNode }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 5 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, y: 5 }}
+    className="absolute bottom-full -left-[15px] mb-2 w-[75px] py-1.5 bg-white/10 backdrop-blur-md rounded-lg text-white text-sm font-bold text-center whitespace-nowrap border border-white/20 shadow-[0_4px_12px_rgba(0,0,0,0.1)]"
+  >
+    {children}
+  </motion.div>
+);
+
+export default function UrlInput({ onSubmit, isLoading, onAudioData, onError }: UrlInputProps) {
   const [input, setInput] = useState("");
   const [audioState, setAudioState] = useState<AudioState>({
     isRecording: false,
@@ -29,6 +43,9 @@ export default function UrlInput({ onSubmit, isLoading, onAudioData }: UrlInputP
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isCommandPressed, setIsCommandPressed] = useState(false);
 
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -69,6 +86,7 @@ export default function UrlInput({ onSubmit, isLoading, onAudioData }: UrlInputP
   };
 
   const startRecording = async () => {
+    setIsTranscribing(true)
     setAudioState(prev => ({ ...prev, permissionError: null, duration: 0 }));
     
     try {
@@ -103,9 +121,14 @@ export default function UrlInput({ onSubmit, isLoading, onAudioData }: UrlInputP
 
           if (!response.ok) throw new Error('Transcription failed');
           const { text } = await response.json();
-          setInput(prev => prev + (prev ? ' ' : '') + text);
+          const newInput = (prev: string) => prev + (prev ? ' ' : '') + text;
+          setInput(newInput(input));
+          // Automatically submit after successful transcription
+          onSubmit(newInput(input));
         } catch (error) {
-          setAudioState(prev => ({ ...prev, permissionError: 'Failed to transcribe audio. Please try again.' }));
+          const errorMessage = 'Failed to transcribe audio. Please try again.';
+          setAudioState(prev => ({ ...prev, permissionError: errorMessage }));
+          onError?.(errorMessage);
         } finally {
           setAudioState(prev => ({ ...prev, isTranscribing: false }));
         }
@@ -123,10 +146,12 @@ export default function UrlInput({ onSubmit, isLoading, onAudioData }: UrlInputP
         : 'Failed to access microphone. Please try again.';
       
       setAudioState(prev => ({ ...prev, permissionError: errorMessage }));
+      onError?.(errorMessage);
     }
   };
 
   const stopRecording = () => {
+    setIsTranscribing(false)
     if (mediaRecorderRef.current && audioState.isRecording) {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
@@ -158,6 +183,44 @@ export default function UrlInput({ onSubmit, isLoading, onAudioData }: UrlInputP
     };
   }, []);
 
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && !e.repeat) {
+        e.preventDefault(); // Prevent browser refresh
+        toggleRecording();
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        setIsCommandPressed(true);
+        setShowTooltip(true);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.repeat) {
+        e.preventDefault();
+        if (input.trim()) {
+          onSubmit(input);
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Meta' || e.key === 'Control') {
+        setIsCommandPressed(false);
+        setShowTooltip(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [audioState.isRecording, input, onSubmit]);
+
   const animationConfig = {
     type: "spring",
     stiffness: 300,
@@ -166,108 +229,65 @@ export default function UrlInput({ onSubmit, isLoading, onAudioData }: UrlInputP
 
   return (
     <div className="relative w-full max-w-2xl mb-8">
-      <form onSubmit={handleSubmit} className="relative">
-        <input
+      <form onSubmit={handleSubmit} className="relative flex gap-2">
+        <RetroInput
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Enter a task for the agent to perform..."
-          className="w-full bg-[#1A1A1A] text-white placeholder-gray-400 px-4 py-3 rounded-2xl border-[3px] border-[#404040] focus:outline-none focus:ring-0 focus:border-white transition-all duration-200 font-jetbrains-mono pr-28"
         />
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-          <motion.button
-            type="button"
-            onClick={toggleRecording}
-            className={`rounded-lg transition-colors duration-200 flex items-center justify-center ${
-              audioState.isRecording 
-                ? 'bg-red-500 hover:bg-red-600' 
-                : 'bg-white hover:bg-gray-100'
-            }`}
-            aria-label={audioState.isRecording ? "Stop recording" : "Start recording"}
-            disabled={audioState.isTranscribing}
-            style={{ height: 30, width: 30 }}
-            animate={{ width: audioState.isRecording ? 100 : 30 }}
-            initial={false}
-            transition={animationConfig}
-          >
-            <AnimatePresence mode="wait">
-              {audioState.isTranscribing ? (
-                <motion.div
-                  key="loading"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  transition={animationConfig}
-                >
-                  <IconLoader2 className="animate-spin h-4 w-4" />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="recording"
-                  className="flex items-center justify-center gap-2 w-full"
-                  initial={false}
-                  animate={{ 
-                    paddingRight: audioState.isRecording ? '0.75rem' : '0',
-                    paddingLeft: audioState.isRecording ? '0.5rem' : '0'
-                  }}
-                  transition={animationConfig}
-                >
-                  <motion.div
-                    initial={false}
-                    animate={{ scale: audioState.isRecording ? 1.1 : 1 }}
-                    whileHover={{ scale: 1.1 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 10 }}
+        <div className="flex items-center gap-2">
+          <motion.div className="relative">
+            <RetroButton
+              type="button"
+              onClick={toggleRecording}
+              isActive={audioState.isRecording}
+              disabled={audioState.isTranscribing || isLoading}
+              className="h-[45px] p-0"
+              animateWidth={true}
+              initialWidth={45}
+              expandedWidth={80}
+            >
+              <AnimatePresence mode="wait">
+                {audioState.isRecording ? (
+                  <motion.span
+                    key="timer"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="text-white text-base font-normal whitespace-nowrap px-2"
                   >
-                    {audioState.isRecording ? (
-                      <IconSquareRoundedFilled className="w-4 h-4 text-white" />
-                    ) : (
-                      <IconMicrophoneFilled className="w-4 h-4" style={{ color: 'black' }} />
-                    )}
+                    {formatDuration(audioState.duration)}
+                  </motion.span>
+                ) : (
+                  <motion.div
+                    key="mic"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    <MicrophoneIcon />
                   </motion.div>
-                  <AnimatePresence>
-                    {audioState.isRecording && (
-                      <motion.span
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -10 }}
-                        transition={animationConfig}
-                        className="text-white text-sm font-medium whitespace-nowrap"
-                        style={{ display: 'inline-block', width: '2.5rem', textAlign: 'center' }}
-                      >
-                        {formatDuration(audioState.duration)}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
+                )}
+              </AnimatePresence>
+            </RetroButton>
+            <AnimatePresence>
+              {(showTooltip && !isTranscribing) && (
+                <Tooltip>
+                  ⌘ + V
+                </Tooltip>
               )}
             </AnimatePresence>
-          </motion.button>
-          <button
+          </motion.div>
+          <RetroButton
             type="submit"
-            className="rounded-lg bg-white text-black hover:bg-gray-100 transition-colors duration-200 flex items-center justify-center"
-            aria-label="Start Task"
-            disabled={isLoading}
-            style={{ width: 30, height: 30 }}
+            disabled={isLoading || audioState.isTranscribing}
+            className="h-[45px] w-[45px] p-0"
           >
-            {isLoading ? (
-              <IconLoader2 className="animate-spin h-4 w-4" />
-            ) : (
-              <motion.div
-                whileHover={{ scale: 1.1 }}
-                transition={{ type: "spring", stiffness: 400, damping: 10 }}
-              >
-                <IconArrowBigRightFilled className="w-4 h-4" />
-              </motion.div>
-            )}
-          </button>
+            <ArrowIcon />
+          </RetroButton>
         </div>
       </form>
-      
-      {audioState.permissionError && (
-        <div className="mt-2 text-red-500 text-sm">
-          {audioState.permissionError}
-        </div>
-      )}
     </div>
   );
 } 

@@ -1,11 +1,16 @@
 import { Analytics } from "@vercel/analytics/next";
-import { JetBrains_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
+import localFont from 'next/font/local';
 import "./globals.css";
-import { PostHogProvider } from "./components/PosthogProvider";
 
-const jetbrainsMono = JetBrains_Mono({
+const geistMono = Geist_Mono({
   subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
+  variable: "--font-geist-mono",
+});
+
+const stepsMono = localFont({
+  src: '../public/fonts/Steps-Mono.otf',
+  variable: '--font-steps-mono',
 });
 
 export default function RootLayout({
@@ -21,10 +26,9 @@ export default function RootLayout({
         <link rel="alternate icon" href="/favicon.ico" />
       </head>
       <body
-        className={`${jetbrainsMono.variable} font-mono antialiased bg-white text-gray-900`}
+        className={`${geistMono.variable} ${stepsMono.variable} font-mono antialiased bg-white text-gray-900`}
       >
         {children}
-        <Analytics />
       </body>
     </html>
   );
